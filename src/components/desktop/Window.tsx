@@ -1,116 +1,153 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { useWindows, type AppId, type Rect } from "./WindowManager";
+import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { DOCK_H, MENU_BAR_H, appMeta, clampRect } from "./app-meta";
+import { useWindows, WindowSelfContext } from "./WindowManager";
+import type { Rect, WindowState } from "./types";
 
-export const MENU_BAR_H = 28;
-const MIN_W = 320;
-const MIN_H = 220;
+// "move" or one of 8 resize directions.
+type Dir = "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
-type DragMode = "move" | "resize";
+const HANDLES: { dir: Exclude<Dir, "move">; className: string }[] = [
+  { dir: "n", className: "top-0 left-3 right-3 h-1.5 cursor-ns-resize" },
+  { dir: "s", className: "bottom-0 left-3 right-3 h-1.5 cursor-ns-resize" },
+  { dir: "e", className: "right-0 top-3 bottom-3 w-1.5 cursor-ew-resize" },
+  { dir: "w", className: "left-0 top-3 bottom-3 w-1.5 cursor-ew-resize" },
+  { dir: "nw", className: "left-0 top-0 h-3 w-3 cursor-nwse-resize" },
+  { dir: "se", className: "right-0 bottom-0 h-3 w-3 cursor-nwse-resize" },
+  { dir: "ne", className: "right-0 top-0 h-3 w-3 cursor-nesw-resize" },
+  { dir: "sw", className: "left-0 bottom-0 h-3 w-3 cursor-nesw-resize" },
+];
+
+function computeRect(dir: Dir, start: Rect, dx: number, dy: number, min: { w: number; h: number }): Rect {
+  if (dir === "move") return { ...start, x: start.x + dx, y: start.y + dy };
+  let { x, y, w, h } = start;
+  if (dir.includes("e")) w = Math.max(min.w, start.w + dx);
+  if (dir.includes("s")) h = Math.max(min.h, start.h + dy);
+  if (dir.includes("w")) {
+    w = Math.max(min.w, start.w - dx);
+    x = start.x + start.w - w;
+  }
+  if (dir.includes("n")) {
+    h = Math.max(min.h, start.h - dy);
+    y = Math.max(MENU_BAR_H, start.y + start.h - h);
+    h = start.y + start.h - y;
+  }
+  return { x, y, w, h };
+}
 
 export function Window({
-  id,
+  win,
   title,
   children,
   bodyClassName = "",
 }: {
-  id: AppId;
+  win: WindowState;
   title: string;
   children: ReactNode;
   bodyClassName?: string;
 }) {
   const { state, close, minimize, toggleMaximize, focus, setRect } = useWindows();
-  const win = state.windows[id];
-  const isFocused = state.focused === id;
+  const isFocused = state.focused === win.id;
+  const min = appMeta[win.appId].min;
 
-  // Live rect while dragging; committed to the store on pointerup.
-  const [live, setLive] = useState<Rect | null>(null);
-  const drag = useRef<{ mode: DragMode; px: number; py: number; start: Rect } | null>(null);
-  const rect = live ?? win.rect;
+  const el = useRef<HTMLElement>(null);
+  const drag = useRef<{ dir: Dir; px: number; py: number; start: Rect; next: Rect; raf: number } | null>(null);
 
-  // Keep windows reachable if the browser window shrinks.
-  useEffect(() => {
-    const onResize = () => setRect(id, clamp(win.rect, "move"));
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [id, win.rect, setRect]);
-
-  function startDrag(mode: DragMode, e: ReactPointerEvent) {
+  function start(dir: Dir, e: ReactPointerEvent) {
     if (e.button !== 0 || win.maximized) return;
     e.preventDefault();
+    e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { mode, px: e.clientX, py: e.clientY, start: win.rect };
-    focus(id);
+    drag.current = { dir, px: e.clientX, py: e.clientY, start: win.rect, next: win.rect, raf: 0 };
+    focus(win.id);
   }
 
-  function onPointerMove(e: ReactPointerEvent) {
+  // Write geometry straight to the DOM during the drag; commit to React state once on release.
+  function move(e: ReactPointerEvent) {
+    const d = drag.current;
+    if (!d || !el.current) return;
+    if (e.buttons === 0) return end();
+    let next = computeRect(d.dir, d.start, e.clientX - d.px, e.clientY - d.py, min);
+    if (d.dir === "move") next = clampRect(next, window.innerWidth, window.innerHeight);
+    d.next = next;
+    cancelAnimationFrame(d.raf);
+    d.raf = requestAnimationFrame(() => {
+      const s = el.current!.style;
+      s.left = `${next.x}px`;
+      s.top = `${next.y}px`;
+      s.width = `${next.w}px`;
+      s.height = `${next.h}px`;
+    });
+  }
+
+  function end() {
     const d = drag.current;
     if (!d) return;
-    const dx = e.clientX - d.px;
-    const dy = e.clientY - d.py;
-    const next =
-      d.mode === "move"
-        ? { ...d.start, x: d.start.x + dx, y: d.start.y + dy }
-        : { ...d.start, w: d.start.w + dx, h: d.start.h + dy };
-    setLive(clamp(next, d.mode));
-  }
-
-  function onPointerUp() {
-    if (drag.current && live) setRect(id, live);
+    cancelAnimationFrame(d.raf);
     drag.current = null;
-    setLive(null);
+    setRect(win.id, d.next);
   }
 
   const style = win.maximized
-    ? { left: 0, top: MENU_BAR_H, width: "100vw", height: `calc(100vh - ${MENU_BAR_H}px - 84px)`, zIndex: win.z }
-    : { left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: win.z };
+    ? { left: 0, top: MENU_BAR_H, width: "100vw", height: `calc(100vh - ${MENU_BAR_H + DOCK_H}px)`, zIndex: win.z }
+    : { left: win.rect.x, top: win.rect.y, width: win.rect.w, height: win.rect.h, zIndex: win.z };
 
   return (
-    <section
-      role="dialog"
-      aria-label={title}
-      onPointerDown={() => !isFocused && focus(id)}
-      style={style}
-      className={`window-enter absolute flex flex-col overflow-hidden rounded-xl border border-black/10 bg-white text-neutral-900 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-100 ${
-        win.minimized ? "pointer-events-none translate-y-[60vh] scale-[0.15] opacity-0" : ""
-      } ${win.maximized ? "rounded-none" : ""} ${live ? "" : "transition-[transform,opacity] duration-300 ease-out"}`}
-    >
-      {/* Title bar: drag handle + traffic lights */}
-      <header
-        onPointerDown={(e) => startDrag("move", e)}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onDoubleClick={() => toggleMaximize(id)}
-        className="relative flex h-9 shrink-0 cursor-default select-none items-center border-b border-black/5 bg-neutral-100/90 px-3 dark:border-white/5 dark:bg-neutral-800/90"
+    <WindowSelfContext.Provider value={{ windowId: win.id, isFocused }}>
+      <section
+        ref={el}
+        role="dialog"
+        aria-label={title}
+        onPointerDownCapture={() => !isFocused && focus(win.id)}
+        style={style}
+        className={`window-enter absolute flex flex-col overflow-hidden border text-neutral-900 transition-[transform,opacity] duration-300 ease-in-out dark:text-neutral-100 ${
+          isFocused
+            ? "border-black/15 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] dark:border-white/15"
+            : "border-black/10 shadow-[0_12px_30px_-10px_rgba(0,0,0,0.35)] dark:border-white/10"
+        } ${win.maximized ? "rounded-none" : "rounded-xl"} ${
+          win.minimized ? "pointer-events-none translate-y-[70vh] scale-[0.1] opacity-0" : ""
+        } bg-white dark:bg-neutral-900`}
       >
-        <div className="group flex gap-2" onPointerDown={(e) => e.stopPropagation()}>
-          <TrafficLight color="bg-[#ff5f57]" hoverColor="group-hover:bg-[#ff5f57]" label="Close" glyph="×" active={isFocused} onClick={() => close(id)} />
-          <TrafficLight color="bg-[#febc2e]" hoverColor="group-hover:bg-[#febc2e]" label="Minimize" glyph="−" active={isFocused} onClick={() => minimize(id)} />
-          <TrafficLight color="bg-[#28c840]" hoverColor="group-hover:bg-[#28c840]" label="Maximize" glyph="+" active={isFocused} onClick={() => toggleMaximize(id)} />
-        </div>
-        <h2
-          className={`pointer-events-none absolute inset-x-0 text-center text-[13px] font-semibold ${
-            isFocused ? "text-neutral-700 dark:text-neutral-200" : "text-neutral-400"
-          }`}
+        {/* Title bar: drag handle + traffic lights */}
+        <header
+          onPointerDown={(e) => start("move", e)}
+          onPointerMove={move}
+          onPointerUp={end}
+          onPointerCancel={end}
+          onDoubleClick={() => toggleMaximize(win.id)}
+          className="relative flex h-9 shrink-0 cursor-default select-none items-center border-b border-black/5 bg-neutral-100/95 px-3 dark:border-white/5 dark:bg-neutral-800/95"
         >
-          {title}
-        </h2>
-      </header>
+          <div className="group relative z-10 flex gap-2" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+            <TrafficLight color="bg-[#ff5f57]" hoverColor="group-hover:bg-[#ff5f57]" label="Close" glyph="×" active={isFocused} onClick={() => close(win.id)} />
+            <TrafficLight color="bg-[#febc2e]" hoverColor="group-hover:bg-[#febc2e]" label="Minimize" glyph="−" active={isFocused} onClick={() => minimize(win.id)} />
+            <TrafficLight color="bg-[#28c840]" hoverColor="group-hover:bg-[#28c840]" label="Zoom" glyph="+" active={isFocused} onClick={() => toggleMaximize(win.id)} />
+          </div>
+          <h2
+            className={`pointer-events-none absolute inset-x-20 truncate text-center text-[13px] font-semibold ${
+              isFocused ? "text-neutral-700 dark:text-neutral-200" : "text-neutral-400 dark:text-neutral-500"
+            }`}
+          >
+            {title}
+          </h2>
+        </header>
 
-      <div className={`min-h-0 flex-1 overflow-auto ${bodyClassName}`}>{children}</div>
+        <div className={`relative min-h-0 flex-1 overflow-auto ${bodyClassName}`}>{children}</div>
 
-      {/* Resize handle (bottom-right corner) */}
-      {!win.maximized && (
-        <div
-          aria-hidden
-          onPointerDown={(e) => startDrag("resize", e)}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"
-        />
-      )}
-    </section>
+        {!win.maximized &&
+          HANDLES.map((h) => (
+            <div
+              key={h.dir}
+              aria-hidden
+              onPointerDown={(e) => start(h.dir, e)}
+              onPointerMove={move}
+              onPointerUp={end}
+              onPointerCancel={end}
+              className={`absolute z-20 ${h.className}`}
+            />
+          ))}
+      </section>
+    </WindowSelfContext.Provider>
   );
 }
 
@@ -141,23 +178,4 @@ function TrafficLight({
       {glyph}
     </button>
   );
-}
-
-function clamp(r: Rect, mode: DragMode): Rect {
-  if (typeof window === "undefined") return r;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  if (mode === "resize") {
-    return {
-      ...r,
-      w: Math.min(Math.max(r.w, MIN_W), vw - r.x),
-      h: Math.min(Math.max(r.h, MIN_H), vh - r.y),
-    };
-  }
-  // Keep at least part of the title bar on screen.
-  return {
-    ...r,
-    x: Math.min(Math.max(r.x, -r.w + 120), vw - 120),
-    y: Math.min(Math.max(r.y, MENU_BAR_H), vh - 60),
-  };
 }

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: utilities follow the .dark class set from System Settings (auto/light/dark) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", var(--font-geist-sans), "Segoe UI", Roboto, sans-serif;
 }
@@ -21,27 +24,9 @@ body {
   background: #1b2a6b;
 }
 
-/* macOS-style wallpaper: layered radial gradients, no image download */
+/* Backdrop shown before the desktop mounts (matches the default Sierra wallpaper) */
 .wallpaper {
-  background:
-    radial-gradient(ellipse 80% 60% at 15% 85%, #ff7a59 0%, transparent 60%),
-    radial-gradient(ellipse 70% 60% at 85% 20%, #7c5cff 0%, transparent 60%),
-    radial-gradient(ellipse 60% 50% at 70% 90%, #ff4fa0 0%, transparent 55%),
-    radial-gradient(ellipse 90% 70% at 30% 10%, #2f7bff 0%, transparent 60%),
-    linear-gradient(160deg, #1b2a6b 0%, #3b1f78 55%, #7a2d6b 100%);
-}
-
-@media (prefers-color-scheme: dark) {
-  /* Darken via an overlay layer; a CSS filter here would also dim every window inside. */
-  .wallpaper {
-    background:
-      linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
-      radial-gradient(ellipse 80% 60% at 15% 85%, #ff7a59 0%, transparent 60%),
-      radial-gradient(ellipse 70% 60% at 85% 20%, #7c5cff 0%, transparent 60%),
-      radial-gradient(ellipse 60% 50% at 70% 90%, #ff4fa0 0%, transparent 55%),
-      radial-gradient(ellipse 90% 70% at 30% 10%, #2f7bff 0%, transparent 60%),
-      linear-gradient(160deg, #1b2a6b 0%, #3b1f78 55%, #7a2d6b 100%);
-  }
+  background: center / cover no-repeat url(/wallpapers/sierra-wallpaper.jpg), #1b2a6b;
 }
 
 @keyframes window-enter {
