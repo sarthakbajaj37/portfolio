@@ -2,8 +2,6 @@
 
 My personal portfolio, built as a macOS desktop — draggable/resizable windows, a dock, a working menu bar, and a few apps (Notes, Finder, Terminal, TextEdit, Mail). On phones it turns into an iOS-style home screen.
 
-Inspired by [alanagoyal's macOS desktop portfolio](https://www.alanagoyal.com/).
-
 ## Stack
 
 Next.js (App Router) · TypeScript · Tailwind CSS v4 · lucide-react · deployed on Vercel.
