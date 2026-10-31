@@ -1,4 +1,4 @@
-import { siGithub } from "simple-icons";
+import { siApple, siGithub } from "simple-icons";
 
 // lucide-react dropped brand logos, so these live here.
 
@@ -17,6 +17,14 @@ export function LinkedinIcon({ size = 16, className = "" }: { size?: number; cla
       <text x="12" y="17.5" textAnchor="middle" fontSize="14" fontWeight="700" fontFamily="Arial, sans-serif" fill="white">
         in
       </text>
+    </svg>
+  );
+}
+
+export function AppleIcon({ size = 16, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" width={size} height={size} className={className} fill="currentColor">
+      <path d={siApple.path} />
     </svg>
   );
 }

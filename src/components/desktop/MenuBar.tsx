@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Apple, Moon } from "lucide-react";
+import { Moon } from "lucide-react";
+import { AppleIcon } from "@/components/BrandIcons";
 import { useWindows } from "./WindowManager";
 import { appById } from "./apps";
 import { appMeta } from "./app-meta";
@@ -69,7 +70,7 @@ export function MenuBar({ actions }: { actions: SystemActions }) {
   const menus: { id: string; label: ReactNode; bold?: boolean; items: MenuItem[] }[] = [
     {
       id: "apple",
-      label: <Apple size={15} className="fill-current" />,
+      label: <AppleIcon size={15} />,
       items: [
         { label: "About This Mac", action: actions.about },
         { separator: true },

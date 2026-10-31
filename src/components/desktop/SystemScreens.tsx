@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Apple, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { AppleIcon } from "@/components/BrandIcons";
 import { profile } from "@/data/profile";
 import { useSettings } from "@/lib/settings";
 import { wallpaperCss } from "@/lib/wallpapers";
@@ -28,7 +29,7 @@ export function BootScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[20000] flex flex-col items-center justify-center gap-14 bg-black">
-      <Apple size={84} className="fill-white text-white" />
+      <AppleIcon size={84} className="text-white" />
       <div className="h-1 w-52 overflow-hidden rounded-full bg-white/25">
         <div className="h-full rounded-full bg-white transition-[width] duration-150" style={{ width: `${progress}%` }} />
       </div>
